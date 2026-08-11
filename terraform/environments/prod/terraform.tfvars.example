@@ -1,0 +1,23 @@
+project_name                 = "autoservice"
+environment                  = "prod"
+aws_region                   = "us-east-1"
+vpc_id                       = "vpc-xxxxxxxx"
+subnet_ids                   = ["subnet-aaaaaaaa", "subnet-bbbbbbbb"]
+allowed_cidrs                = ["10.0.0.0/16"]
+db_name                      = "autoservice"
+db_username                  = "autoservice_admin"
+engine_version               = "16.4"
+instance_class               = "db.t4g.small"
+allocated_storage            = 50
+max_allocated_storage        = 200
+backup_retention_period      = 14
+multi_az                     = true
+deletion_protection          = true
+performance_insights_enabled = true
+monitoring_interval          = 60
+apply_immediately            = false
+skip_final_snapshot          = false
+tags = {
+  Owner = "soat"
+}
+

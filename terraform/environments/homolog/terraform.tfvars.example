@@ -1,0 +1,23 @@
+project_name                 = "autoservice"
+environment                  = "homolog"
+aws_region                   = "us-east-1"
+vpc_id                       = "vpc-xxxxxxxx"
+subnet_ids                   = ["subnet-aaaaaaaa", "subnet-bbbbbbbb"]
+allowed_cidrs                = ["10.0.0.0/16"]
+db_name                      = "autoservice"
+db_username                  = "autoservice_admin"
+engine_version               = "16.4"
+instance_class               = "db.t4g.micro"
+allocated_storage            = 20
+max_allocated_storage        = 100
+backup_retention_period      = 7
+multi_az                     = false
+deletion_protection          = false
+performance_insights_enabled = true
+monitoring_interval          = 60
+apply_immediately            = true
+skip_final_snapshot          = true
+tags = {
+  Owner = "soat"
+}
+
