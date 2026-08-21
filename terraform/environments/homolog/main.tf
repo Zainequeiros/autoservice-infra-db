@@ -1,5 +1,5 @@
 module "managed_postgres" {
-  source = "./modules/managed_postgres"
+  source = "../../modules/managed_postgres"
 
   identifier                   = local.name
   db_name                      = var.db_name

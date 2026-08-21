@@ -1,15 +1,11 @@
+locals {
+  engine_major_version = regex("^\\d+", var.engine_version)
+}
+
 resource "aws_security_group" "db" {
   name        = "${var.identifier}-db-sg"
   description = "Acesso ao banco PostgreSQL do AutoService"
   vpc_id      = var.vpc_id
-
-  ingress {
-    description = "PostgreSQL"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_cidrs
-  }
 
   egress {
     description = "Saida padrao"
@@ -22,6 +18,28 @@ resource "aws_security_group" "db" {
   tags = merge(var.tags, { Name = "${var.identifier}-db-sg" })
 }
 
+resource "aws_vpc_security_group_ingress_rule" "cidr_access" {
+  for_each = toset(var.allowed_cidrs)
+
+  description       = "PostgreSQL a partir do CIDR ${each.value}"
+  security_group_id = aws_security_group.db.id
+  cidr_ipv4         = each.value
+  from_port         = 5432
+  ip_protocol       = "tcp"
+  to_port           = 5432
+}
+
+resource "aws_vpc_security_group_ingress_rule" "security_group_access" {
+  for_each = toset(var.allowed_security_group_ids)
+
+  description                  = "PostgreSQL a partir do Security Group ${each.value}"
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = each.value
+  from_port                    = 5432
+  ip_protocol                  = "tcp"
+  to_port                      = 5432
+}
+
 resource "aws_db_subnet_group" "this" {
   name       = "${var.identifier}-subnet-group"
   subnet_ids = var.subnet_ids
@@ -30,8 +48,8 @@ resource "aws_db_subnet_group" "this" {
 }
 
 resource "aws_db_parameter_group" "this" {
-  name   = "${var.identifier}-postgres16"
-  family = "postgres16"
+  name   = "${var.identifier}-postgres${local.engine_major_version}"
+  family = "postgres${local.engine_major_version}"
 
   parameter {
     name  = "rds.force_ssl"
@@ -43,7 +61,7 @@ resource "aws_db_parameter_group" "this" {
     value = "500"
   }
 
-  tags = merge(var.tags, { Name = "${var.identifier}-postgres16" })
+  tags = merge(var.tags, { Name = "${var.identifier}-postgres${local.engine_major_version}" })
 }
 
 resource "aws_db_instance" "this" {
@@ -80,4 +98,3 @@ resource "aws_db_instance" "this" {
 
   tags = merge(var.tags, { Name = var.identifier })
 }
-

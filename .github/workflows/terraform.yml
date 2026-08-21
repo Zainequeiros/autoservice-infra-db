@@ -3,14 +3,12 @@ name: terraform
 on:
   pull_request:
     branches:
-      - main
-      - master
       - homolog
+      - prod
   push:
     branches:
-      - main
-      - master
       - homolog
+      - prod
 
 permissions:
   contents: read
@@ -19,12 +17,16 @@ permissions:
 env:
   TF_IN_AUTOMATION: true
   TERRAFORM_VERSION: 1.9.8
-  WORKING_DIRECTORY: terraform
 
 jobs:
   validate:
     name: Validate Terraform
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - homolog
+          - prod
 
     steps:
       - name: Checkout
@@ -36,15 +38,15 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform fmt
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+        working-directory: terraform
         run: terraform fmt -check -recursive
 
       - name: Terraform init
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+        working-directory: terraform/environments/${{ matrix.environment }}
         run: terraform init -backend=false
 
       - name: Terraform validate
-        working-directory: ${{ env.WORKING_DIRECTORY }}
+        working-directory: terraform/environments/${{ matrix.environment }}
         run: terraform validate
 
   deploy:
@@ -67,28 +69,44 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-east-1
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Select environment variables
         shell: bash
         run: |
           if [ "${GITHUB_REF_NAME}" = "homolog" ]; then
-            echo "TF_VARS_FILE=environments/homolog/terraform.tfvars" >> "$GITHUB_ENV"
+            echo "ENV_DIR=terraform/environments/homolog" >> "$GITHUB_ENV"
+            echo "BACKEND_KEY=autoservice-infra-db/homolog.tfstate" >> "$GITHUB_ENV"
             echo "TF_VAR_db_password=${{ secrets.TF_VAR_db_password_homolog }}" >> "$GITHUB_ENV"
+            {
+              echo 'TF_VARS_CONTENT<<EOF'
+              echo '${{ secrets.TF_VARS_HOMOLOG }}'
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
           else
-            echo "TF_VARS_FILE=environments/prod/terraform.tfvars" >> "$GITHUB_ENV"
+            echo "ENV_DIR=terraform/environments/prod" >> "$GITHUB_ENV"
+            echo "BACKEND_KEY=autoservice-infra-db/prod.tfstate" >> "$GITHUB_ENV"
             echo "TF_VAR_db_password=${{ secrets.TF_VAR_db_password_prod }}" >> "$GITHUB_ENV"
+            {
+              echo 'TF_VARS_CONTENT<<EOF'
+              echo '${{ secrets.TF_VARS_PROD }}'
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
           fi
 
+      - name: Create tfvars file
+        shell: bash
+        run: |
+          printf '%s\n' "${TF_VARS_CONTENT}" > "${ENV_DIR}/terraform.tfvars"
+
       - name: Terraform init
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: terraform init
+        working-directory: ${{ env.ENV_DIR }}
+        run: terraform init -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" -backend-config="key=${BACKEND_KEY}" -backend-config="region=${{ secrets.AWS_REGION }}" -backend-config="dynamodb_table=${{ secrets.TERRAFORM_LOCK_TABLE }}" -backend-config="encrypt=true"
 
       - name: Terraform plan
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: terraform plan -var-file="${TF_VARS_FILE}"
+        working-directory: ${{ env.ENV_DIR }}
+        run: terraform plan -var-file="terraform.tfvars"
 
       - name: Terraform apply
-        working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: terraform apply -auto-approve -var-file="${TF_VARS_FILE}"
-
+        working-directory: ${{ env.ENV_DIR }}
+        run: terraform apply -auto-approve -var-file="terraform.tfvars"
