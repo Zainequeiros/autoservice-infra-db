@@ -18,3 +18,13 @@ output "security_group_id" {
   value       = module.managed_postgres.security_group_id
 }
 
+output "database_secret_arn" {
+  description = "ARN do segredo do banco no AWS Secrets Manager."
+  value       = aws_secretsmanager_secret.db_credentials.arn
+}
+
+output "database_secret_name" {
+  description = "Nome do segredo do banco no AWS Secrets Manager."
+  value       = aws_secretsmanager_secret.db_credentials.name
+}
+
