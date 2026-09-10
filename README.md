@@ -59,6 +59,84 @@ flowchart LR
     db -->|security_group_id| eks[autoservice-infra-k8s]
 ```
 
+## Modelo relacional e justificativa
+
+O banco escolhido para esse ecossistema é o Amazon RDS for PostgreSQL, por oferecer consistencia transacional, suporte a constraints, indexes, JSONB e operacao com baixo custo operacional. O diagrama abaixo representa o modelo relacional principal do domínio da oficina:
+
+```mermaid
+erDiagram
+    CUSTOMER ||--o{ VEHICLE : owns
+    CUSTOMER ||--o{ WORK_ORDER : opens
+    VEHICLE ||--o{ WORK_ORDER : receives
+    WORK_ORDER ||--o{ WORK_ORDER_STATUS_HISTORY : tracks
+    WORK_ORDER ||--o{ SERVICE_ITEM : contains
+
+    CUSTOMER {
+        uuid id PK
+        string name
+        string cpf UK
+        string email
+        string phone
+    }
+
+    VEHICLE {
+        uuid id PK
+        uuid customer_id FK
+        string plate UK
+        string model
+        int manufacture_year
+    }
+
+    WORK_ORDER {
+        uuid id PK
+        uuid customer_id FK
+        uuid vehicle_id FK
+        string status
+        datetime opened_at
+        datetime closed_at
+    }
+
+    WORK_ORDER_STATUS_HISTORY {
+        uuid id PK
+        uuid work_order_id FK
+        string from_status
+        string to_status
+        datetime changed_at
+    }
+
+    SERVICE_ITEM {
+        uuid id PK
+        uuid work_order_id FK
+        string description
+        numeric price
+        string execution_status
+    }
+```
+
+## Infraestrutura provisionada
+
+Este repositório provisiona:
+
+- Instancia RDS PostgreSQL por ambiente (`homolog` e `prod`)
+- Security Group com regra de entrada para a porta 5432
+- DB Subnet Group em subnets privadas
+- Secret no AWS Secrets Manager com credenciais e endpoints do banco
+- Parametros do banco por `db_parameter_group` com SSL e logs de performance
+
+## Alinhamento ao desafio corporativo
+
+Este repositório atende ao desafio com a camada de persistência corporativa da oficina:
+
+- Banco gerenciado PostgreSQL em AWS RDS com alta disponibilidade e backups automatizados.
+- Segmentação por ambientes de homologação e produção, com deploy automático por pipeline.
+- Observabilidade integrada com CloudWatch e preparação para Datadog/New Relic.
+- Modelagem relacional documentada para clientes, veículos, ordens de serviço, itens, histórico de status e estoque.
+- Proteção de branch com PR obrigatório e deploy automatizado após validação de Terraform.
+
+## Scripts de inicializacao
+
+O script SQL em `scripts/init-db.sql` cria as tabelas e indices basicos do modelo relacional, permitindo bootstrap inicial do banco em ambientes novos.
+
 ## Estrutura
 
 ```text
@@ -68,6 +146,8 @@ flowchart LR
 |   |-- adr/
 |   |-- model/
 |   `-- rfc/
+|-- scripts/
+|   `-- init-db.sql
 `-- terraform/
     |-- environments/
     |   |-- homolog/
