@@ -4,6 +4,7 @@ aws_region                   = "us-east-1"
 vpc_id                       = "vpc-xxxxxxxx"
 subnet_ids                   = ["subnet-aaaaaaaa", "subnet-bbbbbbbb"]
 allowed_cidrs                = ["10.0.0.0/16"]
+allowed_security_group_ids   = []
 db_name                      = "autoservice"
 db_username                  = "autoservice_admin"
 engine_version               = "16.4"
@@ -20,4 +21,3 @@ skip_final_snapshot          = false
 tags = {
   Owner = "soat"
 }
-

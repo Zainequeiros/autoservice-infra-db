@@ -1,5 +1,5 @@
 module "managed_postgres" {
-  source = "./modules/managed_postgres"
+  source = "../../modules/managed_postgres"
 
   identifier                   = local.name
   db_name                      = var.db_name
@@ -22,25 +22,4 @@ module "managed_postgres" {
   allowed_cidrs                = var.allowed_cidrs
   allowed_security_group_ids   = var.allowed_security_group_ids
   tags                         = local.common_tags
-}
-
-resource "aws_secretsmanager_secret" "db_credentials" {
-  name                    = "${local.name}-database-credentials"
-  description             = "Credenciais do banco PostgreSQL do ambiente ${var.environment}."
-  recovery_window_in_days = 30
-
-  tags = local.common_tags
-}
-
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    username             = var.db_username
-    password             = var.db_password
-    engine               = "postgres"
-    host                 = module.managed_postgres.endpoint
-    port                 = module.managed_postgres.port
-    dbname               = var.db_name
-    dbInstanceIdentifier = module.managed_postgres.identifier
-  })
 }

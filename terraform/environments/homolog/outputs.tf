@@ -13,11 +13,6 @@ output "db_identifier" {
   value       = module.managed_postgres.identifier
 }
 
-output "security_group_id" {
-  description = "Security Group criado para o banco."
-  value       = module.managed_postgres.security_group_id
-}
-
 output "db_arn" {
   description = "ARN da instancia RDS."
   value       = module.managed_postgres.arn
@@ -31,6 +26,11 @@ output "db_name" {
 output "db_username" {
   description = "Usuario administrador da instancia."
   value       = module.managed_postgres.username
+}
+
+output "security_group_id" {
+  description = "Security Group criado para o banco."
+  value       = module.managed_postgres.security_group_id
 }
 
 output "subnet_group_name" {
@@ -67,14 +67,4 @@ output "autoservice_environment" {
     DB_SECURITY_GROUP_ID       = module.managed_postgres.security_group_id
   }
   sensitive = true
-}
-
-output "database_secret_arn" {
-  description = "ARN do segredo do banco no AWS Secrets Manager."
-  value       = aws_secretsmanager_secret.db_credentials.arn
-}
-
-output "database_secret_name" {
-  description = "Nome do segredo do banco no AWS Secrets Manager."
-  value       = aws_secretsmanager_secret.db_credentials.name
 }

@@ -60,19 +60,19 @@ variable "engine_version" {
 variable "instance_class" {
   description = "Classe da instancia RDS."
   type        = string
-  default     = "db.t4g.micro"
+  default     = "db.t4g.small"
 }
 
 variable "allocated_storage" {
   description = "Armazenamento inicial em GB."
   type        = number
-  default     = 20
+  default     = 50
 }
 
 variable "max_allocated_storage" {
   description = "Escalabilidade automatica maxima de armazenamento em GB."
   type        = number
-  default     = 100
+  default     = 200
 }
 
 variable "storage_type" {
@@ -84,13 +84,13 @@ variable "storage_type" {
 variable "backup_retention_period" {
   description = "Quantidade de dias de retencao de backup."
   type        = number
-  default     = 7
+  default     = 14
 }
 
 variable "multi_az" {
   description = "Habilita alta disponibilidade Multi-AZ."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "deletion_protection" {
