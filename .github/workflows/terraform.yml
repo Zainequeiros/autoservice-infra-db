@@ -3,16 +3,15 @@ name: terraform
 on:
   pull_request:
     branches:
-      - homolog
-      - prod
+      - develop
+      - main
   push:
     branches:
-      - homolog
-      - prod
+      - develop
+      - main
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   TF_IN_AUTOMATION: true
@@ -54,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     if: github.event_name == 'push'
-    environment: ${{ github.ref_name == 'homolog' && 'homolog' || 'prod' }}
+    environment: ${{ github.ref_name == 'develop' && 'homolog' || 'prod' }}
 
     steps:
       - name: Checkout
@@ -68,16 +67,18 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
       - name: Select environment variables
         shell: bash
         run: |
-          if [ "${GITHUB_REF_NAME}" = "homolog" ]; then
+          if [ "${GITHUB_REF_NAME}" = "develop" ]; then
             echo "ENV_DIR=terraform/environments/homolog" >> "$GITHUB_ENV"
             echo "BACKEND_KEY=autoservice-infra-db/homolog.tfstate" >> "$GITHUB_ENV"
-            echo "TF_VAR_db_password=${{ secrets.TF_VAR_db_password_homolog }}" >> "$GITHUB_ENV"
+            echo "TF_VAR_db_password=${{ secrets.TF_VAR_DB_PASSWORD_HOMOLOG }}" >> "$GITHUB_ENV"
             {
               echo 'TF_VARS_CONTENT<<EOF'
               echo '${{ secrets.TF_VARS_HOMOLOG }}'
@@ -86,7 +87,7 @@ jobs:
           else
             echo "ENV_DIR=terraform/environments/prod" >> "$GITHUB_ENV"
             echo "BACKEND_KEY=autoservice-infra-db/prod.tfstate" >> "$GITHUB_ENV"
-            echo "TF_VAR_db_password=${{ secrets.TF_VAR_db_password_prod }}" >> "$GITHUB_ENV"
+            echo "TF_VAR_db_password=${{ secrets.TF_VAR_DB_PASSWORD_PROD }}" >> "$GITHUB_ENV"
             {
               echo 'TF_VARS_CONTENT<<EOF'
               echo '${{ secrets.TF_VARS_PROD }}'
@@ -101,7 +102,13 @@ jobs:
 
       - name: Terraform init
         working-directory: ${{ env.ENV_DIR }}
-        run: terraform init -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" -backend-config="key=${BACKEND_KEY}" -backend-config="region=${{ secrets.AWS_REGION }}" -backend-config="dynamodb_table=${{ secrets.TERRAFORM_LOCK_TABLE }}" -backend-config="encrypt=true"
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="key=${BACKEND_KEY}" \
+            -backend-config="region=${{ secrets.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=${{ secrets.TERRAFORM_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
 
       - name: Terraform plan
         working-directory: ${{ env.ENV_DIR }}
