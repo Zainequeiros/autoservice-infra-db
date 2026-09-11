@@ -62,7 +62,7 @@ variable "db_password" {
 variable "engine_version" {
   description = "Versao do PostgreSQL."
   type        = string
-  default     = "16.4"
+  default     = "16.3"
 }
 
 variable "instance_class" {
