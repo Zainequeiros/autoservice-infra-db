@@ -19,6 +19,7 @@ variable "aws_region" {
 variable "vpc_id" {
   description = "ID da VPC onde o banco sera provisionado."
   type        = string
+  default     = ""
 }
 
 variable "subnet_ids" {
@@ -134,17 +135,4 @@ variable "tags" {
   description = "Tags adicionais do projeto."
   type        = map(string)
   default     = {}
-}
-
-
-variable "vpc_id" {
-  description = "ID da VPC onde o banco sera provisionado."
-  type        = string
-  default     = ""
-}
-
-variable "subnet_ids" {
-  description = "Lista de subnets privadas para o subnet group do banco."
-  type        = list(string)
-  default     = []
 }
