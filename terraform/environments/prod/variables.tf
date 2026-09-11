@@ -56,7 +56,6 @@ variable "db_password" {
   description = "Senha do usuario administrador."
   type        = string
   sensitive   = true
-  default     = "Autoservice123!"
 }
 
 variable "engine_version" {
