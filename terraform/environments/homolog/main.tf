@@ -1,3 +1,22 @@
+data "aws_vpc" "selected" {
+  filter {
+    name   = "tag:Name"
+    values = ["${var.project_name}-${var.environment}-vpc"]
+  }
+}
+
+data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected.id]
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = ["*private*"]
+  }
+}
+
 module "managed_postgres" {
   source = "../../modules/managed_postgres"
 
@@ -17,8 +36,8 @@ module "managed_postgres" {
   monitoring_interval          = var.monitoring_interval
   apply_immediately            = var.apply_immediately
   skip_final_snapshot          = var.skip_final_snapshot
-  vpc_id                       = var.vpc_id
-  subnet_ids                   = var.subnet_ids
+  vpc_id                       = data.aws_vpc.selected.id
+  subnet_ids                   = data.aws_subnets.private.ids
   allowed_cidrs                = var.allowed_cidrs
   allowed_security_group_ids   = var.allowed_security_group_ids
   tags                         = local.common_tags
