@@ -252,6 +252,7 @@ Configurar no GitHub:
 
 ## Documentacao adicional
 
+- [Integracao RDS com EKS e Lambda](docs/rds-security-groups.md)
 - [RFC 0001 - Plataforma de banco e rede](docs/rfc/0001-database-platform-and-networking.md)
 - [ADR 0001 - Uso de AWS RDS PostgreSQL](docs/adr/0001-use-aws-rds-postgresql.md)
 - [Justificativa e modelo relacional](docs/model/database-rationale.md)
