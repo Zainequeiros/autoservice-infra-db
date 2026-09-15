@@ -1,31 +1,36 @@
-name: terraform
+# CI/CD Terraform — autoservice-infra-db
+# Padrão: develop → homolog | main → prod
+# PR / push: validate (homolog + prod) — só checagem, não aplica
+# Push: apply somente do ambiente da branch
+
+name: CI/CD Terraform
 
 on:
   pull_request:
-    branches:
-      - develop
-      - main
+    branches: [main, develop]
   push:
-    branches:
-      - develop
-      - main
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: infra-db-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 env:
   TF_IN_AUTOMATION: true
-  TERRAFORM_VERSION: 1.9.8
+  TERRAFORM_VERSION: "1.9.8"
 
 jobs:
   validate:
-    name: Validate Terraform
+    name: Validate (${{ matrix.environment }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        environment:
-          - homolog
-          - prod
+        environment: [homolog, prod]
 
     steps:
       - name: Checkout
@@ -49,7 +54,7 @@ jobs:
         run: terraform validate
 
   deploy:
-    name: Deploy Terraform
+    name: Deploy (${{ github.ref_name == 'develop' && 'homolog' || 'prod' }})
     runs-on: ubuntu-latest
     needs: validate
     if: github.event_name == 'push'
@@ -115,7 +120,7 @@ jobs:
         working-directory: ${{ env.ENV_DIR }}
         run: terraform plan -lock=false -var-file="terraform.tfvars"
 
-      # Academy: homolog/prod compartilham nomes (autoservice-db*). Se o state
+      # Academy: homolog/prod podem compartilhar nomes de recurso. Se o state
       # estiver vazio e o recurso já existir, importa e reaplica (não recria).
       - name: Terraform apply (adopt existing if needed)
         working-directory: ${{ env.ENV_DIR }}

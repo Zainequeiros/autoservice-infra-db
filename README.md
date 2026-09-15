@@ -1,199 +1,189 @@
 # autoservice-infra-db
 
-Infraestrutura como codigo do banco de dados gerenciado do Tech Challenge POS TECH. Este repositorio provisiona a base PostgreSQL em AWS, com foco em seguranca, rastreabilidade, operacao corporativa e integracao com pipelines de CI/CD.
+Infraestrutura como código do **banco de dados gerenciado** do Tech Challenge POS TECH (SOAT).
 
-## Escopo do repositorio
+Nas Fases 1–2 o PostgreSQL rodava localmente (Docker / K8s). Na **Fase 3** este repositório provisiona o **Amazon RDS for PostgreSQL** (homolog e prod), com segurança de rede, Secrets Manager, CloudWatch e integração com EKS + Lambda.
 
-- Provisionamento do banco de dados gerenciado com Terraform
-- Segregacao por ambientes de homologacao e producao
-- Pipeline de validacao e deploy automatizado com GitHub Actions
-- Padrao de observabilidade para logs, metricas e alarmes do banco
-- Documentacao tecnica das decisoes arquiteturais e da modelagem relacional
+---
+
+## Propósito
+
+- Provisionar **RDS PostgreSQL** por ambiente (`homolog` / `prod`) via Terraform.
+- Expor outputs (`jdbc_url`, `lambda_environment`, `security_group_id`) para a app e a Lambda.
+- Documentar decisões (ADR/RFC) e a modelagem relacional do domínio da oficina.
+- Automatizar validação e deploy com GitHub Actions.
+
+### Ecossistema
+
+| Repositório | Papel |
+|-------------|--------|
+| **autoservice-infra-db** (este) | Terraform RDS |
+| [autoservice](https://github.com/cristhian-ruescas/autoservice) | App Spring (JDBC / JPA — schemas `cadastro`, `servico`, …) |
+| [autoservice-lambda-auth](https://github.com/Zainequeiros/autoservice-lambda-auth) | Consulta CPF no schema `cadastro` |
+| [autoservice-infra-k8s](https://github.com/Zainequeiros/autoservice-infra-k8s) | SGs/subnets liberados no RDS |
+
+Diagramas ER / arquitetura: [Miro — Autoservice](https://miro.com/app/board/uXjVHprBYf0=/).
+
+---
 
 ## Tecnologias
 
 | Item | Escolha |
-| --- | --- |
+|------|---------|
 | Cloud | AWS |
 | Banco gerenciado | Amazon RDS for PostgreSQL |
 | Provisionamento | Terraform |
-| CI/CD | GitHub Actions |
-| Observabilidade | CloudWatch + integracao prevista com Datadog/New Relic |
+| Segredos | AWS Secrets Manager |
+| Observabilidade (camada DB) | CloudWatch Logs / Metrics (app/cluster → **Datadog**) |
+| CI/CD | GitHub Actions (`.github/workflows/terraform.yml`) |
 
-## Arquitetura deste repositorio
+**Dockerfile:** não se aplica (Terraform + documentação).  
+**Swagger/Postman:** não se aplica neste repo — ver links abaixo.
 
-```mermaid
-flowchart LR
-    dev[Dev / Pull Request] --> gha[GitHub Actions]
-    gha --> validate[terraform fmt + validate]
-    gha --> plan[terraform plan]
-    gha --> applyHomolog[Apply homolog]
-    gha --> applyProd[Apply prod]
+---
 
-    applyHomolog --> rdsHomolog[(RDS PostgreSQL - homolog)]
-    applyProd --> rdsProd[(RDS PostgreSQL - prod)]
+## Link Swagger / Postman
 
-    subgraph aws[AWS]
-        rdsHomolog
-        rdsProd
-        sg[Security Group]
-        subnet[DB Subnet Group]
-        cw[CloudWatch Logs / Metrics]
-    end
+Este repositório **não** expõe APIs. Contratos das APIs protegidas:
 
-    rdsHomolog --> sg
-    rdsHomolog --> subnet
-    rdsHomolog --> cw
-    rdsProd --> sg
-    rdsProd --> subnet
-    rdsProd --> cw
-```
+| Recurso | Onde |
+|---------|------|
+| Swagger | [autoservice](https://github.com/cristhian-ruescas/autoservice) — `/swagger-ui.html` |
+| Postman | [Autoservice API.postman_collection.json](https://github.com/cristhian-ruescas/autoservice/blob/develop/Autoservice%20API.postman_collection.json) |
+| Endpoint RDS | output Terraform `jdbc_url` (não versionar senha) |
 
-## Contrato com os outros repositórios
+---
+
+## Diagrama da arquitetura (este repositório)
 
 ```mermaid
 flowchart LR
-    db[autoservice-infra-db]
-    db -->|jdbc_url / db_username| app[autoservice]
-    db -->|DB_HOST / DB_PORT / DB_NAME / DB_USER| lambda[autoservice-lambda-auth]
-    db -->|security_group_id| eks[autoservice-infra-k8s]
+  subgraph aws[AWS]
+    rdsHomolog[(RDS PostgreSQL homolog)]
+    rdsProd[(RDS PostgreSQL prod)]
+    sg[Security Group :5432]
+    subnet[DB Subnet Group]
+    cw[CloudWatch]
+    sm[Secrets Manager]
+  end
+
+  gha[GitHub Actions] -->|apply develop| rdsHomolog
+  gha -->|apply main| rdsProd
+  rdsHomolog --> sg
+  rdsHomolog --> subnet
+  rdsHomolog --> cw
+  rdsHomolog --> sm
+  rdsProd --> sg
+  rdsProd --> subnet
+  rdsProd --> cw
+  rdsProd --> sm
+
+  eks[EKS nodes SG] -->|5432| sg
+  lambda[Lambda auth SG] -->|5432| sg
 ```
 
-## Modelo relacional e justificativa
-
-O banco escolhido para esse ecossistema é o Amazon RDS for PostgreSQL, por oferecer consistencia transacional, suporte a constraints, indexes, JSONB e operacao com baixo custo operacional. O diagrama abaixo representa o modelo relacional principal do domínio da oficina:
+Contrato com os outros repositórios:
 
 ```mermaid
-erDiagram
-    CUSTOMER ||--o{ VEHICLE : owns
-    CUSTOMER ||--o{ WORK_ORDER : opens
-    VEHICLE ||--o{ WORK_ORDER : receives
-    WORK_ORDER ||--o{ WORK_ORDER_STATUS_HISTORY : tracks
-    WORK_ORDER ||--o{ SERVICE_ITEM : contains
-
-    CUSTOMER {
-        uuid id PK
-        string name
-        string cpf UK
-        string email
-        string phone
-    }
-
-    VEHICLE {
-        uuid id PK
-        uuid customer_id FK
-        string plate UK
-        string model
-        int manufacture_year
-    }
-
-    WORK_ORDER {
-        uuid id PK
-        uuid customer_id FK
-        uuid vehicle_id FK
-        string status
-        datetime opened_at
-        datetime closed_at
-    }
-
-    WORK_ORDER_STATUS_HISTORY {
-        uuid id PK
-        uuid work_order_id FK
-        string from_status
-        string to_status
-        datetime changed_at
-    }
-
-    SERVICE_ITEM {
-        uuid id PK
-        uuid work_order_id FK
-        string description
-        numeric price
-        string execution_status
-    }
+flowchart LR
+  db[autoservice-infra-db]
+  db -->|jdbc_url / db_username| app[autoservice]
+  db -->|DB_HOST / DB_PORT / DB_NAME / DB_USER| lambda[autoservice-lambda-auth]
+  k8s[autoservice-infra-k8s] -->|eks + lambda SGs| db
 ```
+
+Integração detalhada: [`docs/rds-security-groups.md`](docs/rds-security-groups.md).
+
+---
+
+## Modelo relacional
+
+### Modelo usado pela aplicação (fonte da verdade)
+
+A API Spring e a Lambda operam nos schemas **`cadastro`** e **`servico`** (entre outros), com o domínio:
+
+**Pessoa** (física/jurídica) → **Cliente** → **Veículo** / **TipoVeiculo** → **Ordem de Serviço** → **Item de Serviço**.
+
+Diagrama ER atual (Miro): [4. Diagrama ER — Modelo Atual](https://miro.com/app/board/uXjVHprBYf0=/).
+
+```text
+PESSOA ──┬── PESSOA_FISICA (cpf)
+         └── PESSOA_JURIDICA (cnpj)
+PESSOA ──── CLIENTE
+PESSOA ──── VEICULO ──── TIPO_VEICULO
+VEICULO ─── ORDEM_SERVICO ─── ITEM_SERVICO
+```
+
+Justificativa formal e ADRs:
+
+- [`docs/model/database-rationale.md`](docs/model/database-rationale.md)
+- [`docs/adr/0001-use-aws-rds-postgresql.md`](docs/adr/0001-use-aws-rds-postgresql.md)
+- [`docs/rfc/0001-database-platform-and-networking.md`](docs/rfc/0001-database-platform-and-networking.md)
+
+### Script `scripts/init-db.sql` (bootstrap ilustrativo / evolução)
+
+O SQL em inglês (`customer`, `work_order`, `work_order_status_history`, …) é um **bootstrap simplificado** e espelha ideias de evolução (ex.: histórico de status, placa unique) documentadas no Miro como **ER proposto**.  
+O schema **real** da oficina em execução é o da aplicação (Flyway/JPA / dados de seed do repo `autoservice`).
+
+ER proposto (evolução): [5. Diagrama ER — Ajustes Propostos](https://miro.com/app/board/uXjVHprBYf0=/).
+
+---
 
 ## Infraestrutura provisionada
 
-Este repositório provisiona:
-
-- Instancia RDS PostgreSQL por ambiente (`homolog` e `prod`)
-- Security Group com regra de entrada para a porta 5432
+- Instância RDS PostgreSQL por ambiente (`homolog` e `prod`)
+- Security Group (porta `5432`) com entrada preferencial via **security groups** do EKS e da Lambda
 - DB Subnet Group em subnets privadas
-- Secret no AWS Secrets Manager com credenciais e endpoints do banco
-- Parametros do banco por `db_parameter_group` com SSL e logs de performance
+- Secret no Secrets Manager (credenciais/endpoints)
+- Parameter group (SSL / logs de performance) + exportação para CloudWatch
 
-## Alinhamento ao desafio corporativo
+---
 
-Este repositório atende ao desafio com a camada de persistência corporativa da oficina:
+## Pré-requisitos
 
-- Banco gerenciado PostgreSQL em AWS RDS com alta disponibilidade e backups automatizados.
-- Segmentação por ambientes de homologação e produção, com deploy automático por pipeline.
-- Observabilidade integrada com CloudWatch e preparação para Datadog/New Relic.
-- Modelagem relacional documentada para clientes, veículos, ordens de serviço, itens, histórico de status e estoque.
-- Proteção de branch com PR obrigatório e deploy automatizado após validação de Terraform.
+- Terraform 1.6+ (CI usa 1.9.x)
+- Conta AWS com permissão para RDS, SG, Subnet Group, Secrets Manager
+- VPC e subnets privadas já existentes (em geral vindas do `autoservice-infra-k8s`)
+- Secrets configurados no GitHub Actions (ver tabela abaixo)
 
-## Scripts de inicializacao
+---
 
-O script SQL em `scripts/init-db.sql` cria as tabelas e indices basicos do modelo relacional, permitindo bootstrap inicial do banco em ambientes novos.
+## Como usar localmente (execução e deploy)
 
-## Estrutura
+1. Copie o exemplo do ambiente:
 
-```text
-.
-|-- .github/workflows/terraform.yml
-|-- docs/
-|   |-- adr/
-|   |-- model/
-|   `-- rfc/
-|-- scripts/
-|   `-- init-db.sql
-`-- terraform/
-    |-- environments/
-    |   |-- homolog/
-    |   `-- prod/
-    `-- modules/managed_postgres/
+```bash
+copy terraform\environments\homolog\terraform.tfvars.example terraform\environments\homolog\terraform.tfvars
 ```
 
-## Pre-requisitos
+2. Preencha rede, instância e **`allowed_security_group_ids`** (SGs do EKS e da Lambda). Use `allowed_cidrs` só se for realmente necessário.
 
-- Terraform 1.6+
-- Conta AWS com permissao para criar RDS, Security Group e Subnet Group
-- Secrets configurados no GitHub Actions
-- VPC e subnets privadas previamente provisionadas
+3. Exporte a senha:
 
-## Como usar localmente
+```bash
+set TF_VAR_db_password=troque-esta-senha
+```
 
-1. Copie o arquivo do ambiente desejado:
-   ```bash
-   copy terraform\environments\homolog\terraform.tfvars.example terraform\environments\homolog\terraform.tfvars
-   ```
-2. Ajuste os valores de rede, credenciais e tamanho da instancia. Prefira preencher `allowed_security_group_ids` com os security groups do EKS e da Lambda; use `allowed_cidrs` apenas quando precisar liberar uma faixa de rede.
-3. Exporte a senha do banco como variavel de ambiente:
-   ```bash
-   set TF_VAR_db_password=troque-esta-senha
-   ```
-4. Execute o fluxo Terraform:
-   ```bash
-   cd terraform\environments\homolog
-   terraform init -backend-config=..\..\backend.hcl
-   terraform fmt -recursive ..\..
-   terraform validate
-   terraform plan -var-file=terraform.tfvars
-   terraform apply -var-file=terraform.tfvars
-   ```
+4. Aplique:
 
-## Outputs consumidos pelos outros repositórios
+```bash
+cd terraform\environments\homolog
+terraform init -backend-config=..\..\backend.hcl
+terraform fmt -recursive ..\..
+terraform validate
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
+```
 
-Depois do `apply`, este repositório expõe:
+### Outputs consumidos pelos outros repos
 
-- `jdbc_url`: valor usado em `SPRING_DATASOURCE_URL` no `autoservice`;
-- `db_username`: valor usado em `SPRING_DATASOURCE_USERNAME` e `DB_USER`;
-- `lambda_environment`: mapa com `DB_HOST`, `DB_PORT`, `DB_NAME` e `DB_USER` para a `autoservice-lambda-auth`;
-- `autoservice_environment`: mapa com variáveis base para a aplicação principal;
-- `security_group_id`: security group do RDS a ser referenciado pelo cluster e pela Lambda.
-
-Exemplo para consultar os outputs:
+| Output | Consumidor |
+|--------|------------|
+| `jdbc_url` | `SPRING_DATASOURCE_URL` (app) |
+| `db_username` | app + Lambda |
+| `lambda_environment` | mapa `DB_*` da Lambda |
+| `autoservice_environment` | variáveis base da app |
+| `security_group_id` | referência cruzada com a rede |
 
 ```bash
 terraform output jdbc_url
@@ -201,67 +191,78 @@ terraform output -json lambda_environment
 terraform output security_group_id
 ```
 
+---
+
 ## CI/CD
 
-O workflow `.github/workflows/terraform.yml` executa:
+Workflow: **`.github/workflows/terraform.yml`** (`name: CI/CD Terraform`).
 
-- `pull_request`: `terraform fmt -check`, `terraform init -backend=false` e `terraform validate` em `homolog` e `prod`
-- `push` em `homolog`: deploy automatico em homologacao
-- `push` em `prod`: deploy automatico em producao
+| Evento | Ação |
+|--------|------|
+| `pull_request` → `develop` / `main` | `fmt` + `validate` (homolog **e** prod — só checagem) |
+| `push` → `develop` | validate + **Deploy (homolog)** |
+| `push` → `main` | validate + **Deploy (prod)** |
 
 ### Secrets esperados
 
 | Secret | Uso |
-| --- | --- |
-| `AWS_ROLE_TO_ASSUME` | Role com permissao para o deploy via OIDC |
-| `AWS_REGION` | Regiao AWS usada no deploy |
-| `TERRAFORM_STATE_BUCKET` | Bucket S3 do estado remoto |
-| `TERRAFORM_LOCK_TABLE` | Tabela DynamoDB de lock do Terraform |
-| `TF_VARS_HOMOLOG` | Conteudo completo do `terraform.tfvars` de homologacao |
-| `TF_VARS_PROD` | Conteudo completo do `terraform.tfvars` de producao |
-| `TF_VAR_db_password_homolog` | Senha do banco de homologacao |
-| `TF_VAR_db_password_prod` | Senha do banco de producao |
+|--------|-----|
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Lab Academy (ou OIDC, se migrado) |
+| `AWS_REGION` | Região (ex.: `us-east-1`) |
+| `TERRAFORM_STATE_BUCKET` | Bucket do state |
+| `TERRAFORM_LOCK_TABLE` | Lock DynamoDB |
+| `TF_VARS_HOMOLOG` / `TF_VARS_PROD` | Conteúdo dos `tfvars` |
+| `TF_VAR_DB_PASSWORD_HOMOLOG` / `TF_VAR_DB_PASSWORD_PROD` | Senha do banco |
 
-## Links de deploy por ambiente
+> **Cuidado:** push/merge em `develop` ou `main` dispara **apply**. Para só README, abra PR (validate) e só faça merge com Lab/credenciais válidas — ou use branch que **não** dispare apply.
 
-- Homolog (RDS endpoint): `<rds-homolog-endpoint>`
-- Produção (RDS endpoint): `<rds-prod-endpoint>`
+### Links de deploy
 
-## Checklist final por ambiente
+Após o apply bem-sucedido:
 
-### Homolog
-- [ ] Pipeline Terraform completa na branch `homolog`
-- [ ] `terraform apply` com sucesso
-- [ ] Outputs `jdbc_url` e `lambda_environment` publicados
-- [ ] Security group liberado apenas para EKS/Lambda autorizados
+```bash
+terraform output -raw jdbc_url
+# endpoint fica no output / Secrets Manager — não commitar
+```
 
-### Produção
-- [ ] Pipeline Terraform completa na branch `prod`
-- [ ] `terraform apply` com sucesso
-- [ ] Outputs `jdbc_url` e `lambda_environment` publicados
-- [ ] Security group liberado apenas para EKS/Lambda autorizados
+---
 
-## Protecao de branch
+## Proteção de branch
 
 Configurar no GitHub:
 
-- `main` ou `master` protegida, sem push direto
-- merge apenas via Pull Request
-- aprovacao obrigatoria antes do merge
-- status checks obrigatorios do workflow Terraform
+- `main` (e preferencialmente `develop`) sem push direto
+- merge via Pull Request + status checks do workflow Terraform
 
-## Documentacao adicional
+---
 
-- [Integracao RDS com EKS e Lambda](docs/rds-security-groups.md)
-- [RFC 0001 - Plataforma de banco e rede](docs/rfc/0001-database-platform-and-networking.md)
-- [ADR 0001 - Uso de AWS RDS PostgreSQL](docs/adr/0001-use-aws-rds-postgresql.md)
+## Checklist operacional
+
+### Homolog (`develop`)
+
+- [x] Pipeline de validate em PR
+- [x] Apply automatizado na branch `develop` (quando Lab/secrets ok)
+- [x] Outputs `jdbc_url` / `lambda_environment`
+- [x] SG liberado para EKS/Lambda
+
+### Produção (`main`)
+
+- [ ] Apply com Lab/conta estável (VPC alinhada)
+- [ ] Outputs publicados
+- [ ] SG restrito a EKS/Lambda de prod
+
+---
+
+## Documentação adicional
+
+- [Integração RDS com EKS e Lambda](docs/rds-security-groups.md)
+- [RFC 0001 — Plataforma de banco e rede](docs/rfc/0001-database-platform-and-networking.md)
+- [ADR 0001 — Uso de AWS RDS PostgreSQL](docs/adr/0001-use-aws-rds-postgresql.md)
 - [Justificativa e modelo relacional](docs/model/database-rationale.md)
-- [Status de aderencia ao Tech Challenge](docs/STATUS-ADERENCIA-TECH-CHALLENGE.md)
+- [Status de aderência ao Tech Challenge](docs/STATUS-ADERENCIA-TECH-CHALLENGE.md)
 
-## Swagger/Postman
+---
 
-Este repositorio nao expoe APIs. A documentacao de contrato das APIs protegidas deve apontar para o repositorio da aplicacao principal.
+## Licença / uso acadêmico
 
-## Dockerfile
-
-Nao se aplica. Este repositorio entrega apenas **Terraform + documentacao tecnica**.
+Projeto do **Tech Challenge** (pós-graduação SOAT).
