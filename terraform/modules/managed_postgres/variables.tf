@@ -92,10 +92,16 @@ variable "subnet_ids" {
 variable "allowed_cidrs" {
   description = "CIDRs com acesso permitido ao banco."
   type        = list(string)
+  default     = []
+}
+
+variable "allowed_security_group_ids" {
+  description = "Security Groups autorizados a acessar o banco."
+  type        = list(string)
+  default     = []
 }
 
 variable "tags" {
   description = "Tags adicionais."
   type        = map(string)
 }
-

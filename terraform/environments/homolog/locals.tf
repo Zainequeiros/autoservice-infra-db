@@ -1,5 +1,5 @@
 locals {
-  name = "${var.project_name}-${var.environment}"
+  name = "autoservice-db"
 
   common_tags = merge(
     {
@@ -11,4 +11,3 @@ locals {
     var.tags
   )
 }
-
