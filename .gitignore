@@ -9,3 +9,8 @@ override.tf.json
 !*.tfvars.example
 .idea/
 spec/
+# Lab local secrets
+.lab-db-password.txt
+*.lab-db-password.txt
+backend.hcl
+
