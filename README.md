@@ -1,22 +1,31 @@
-# autoservice-infra-db
+# autoservice-infra-db — Fase 3/4
 
-Infraestrutura como código do **banco de dados gerenciado** (Amazon RDS for PostgreSQL) do Autoservice — ambientes `homolog` e `prod`.
+Infraestrutura como código do **Amazon RDS for PostgreSQL** — ambientes `homolog` e `prod`.
+
+Usado na **Fase 3** (auth/cadastro) e mantido na **Fase 4** (Lambda `cpf-auth` consulta o schema `cadastro`; os MS da saga usam Postgres/Mongo no mesh do EKS para isolamento da demo).
+
+## Qualidade / CI
+
+| Item | Status |
+|------|--------|
+| IaC | Terraform |
+| CI/CD | `.github/workflows/terraform.yml` — `fmt` + `validate`; apply por branch |
+| Segredos | AWS Secrets Manager / tfvars (não versionar senhas) |
 
 ## Propósito
 
-- Provisionar RDS PostgreSQL por ambiente via Terraform
-- Expor outputs (`jdbc_url`, variáveis da Lambda, security groups) para app e autenticação
-- Documentar modelagem e decisões (ADR/RFC em `docs/`)
-- CI/CD com validação e apply automatizados
+- Provisionar RDS PostgreSQL por ambiente
+- Expor outputs (`jdbc_url`, variáveis da Lambda, security groups)
+- Documentar modelagem (ADR/RFC em `docs/`)
 
 ## Ecossistema
 
 | Repositório | Papel |
 |-------------|--------|
 | **autoservice-infra-db** (este) | Terraform RDS |
-| `autoservice` / microsserviços | Consumo JDBC / schemas |
 | `autoservice-lambda-auth` | Consulta CPF no schema `cadastro` |
 | `autoservice-infra-k8s` | SGs e subnets liberados no RDS |
+| Microsserviços Fase 4 | Mesh Postgres/Mongo no cluster (demo) |
 
 ## Tecnologias
 
@@ -25,29 +34,18 @@ Infraestrutura como código do **banco de dados gerenciado** (Amazon RDS for Pos
 | Cloud | AWS |
 | Banco | Amazon RDS for PostgreSQL |
 | IaC | Terraform |
-| Segredos | AWS Secrets Manager |
-| CI/CD | GitHub Actions (`.github/workflows/terraform.yml`) |
 
 ## Modelo (visão geral)
 
-Schemas principais usados pela autenticação e cadastro: **`cadastro`** e **`servico`**.
-
-```text
-PESSOA ──┬── PESSOA_FISICA (cpf)
-         └── PESSOA_JURIDICA (cnpj)
-PESSOA ──── CLIENTE
-PESSOA ──── VEICULO ──── TIPO_VEICULO
-VEICULO ─── ORDEM_SERVICO ─── ITEM_SERVICO
-```
+Schemas principais da autenticação/cadastro: **`cadastro`** e **`servico`**.
 
 Detalhes: `docs/model/`, `docs/adr/`, `docs/rfc/`.
 
-## Uso local
+## Uso
 
 ```bash
 copy terraform\environments\homolog\terraform.tfvars.example terraform\environments\homolog\terraform.tfvars
-# preencher rede, instância e allowed_security_group_ids
-set TF_VAR_db_password=troque-esta-senha
+# defina TF_VAR_db_password fora do Git
 cd terraform\environments\homolog
 terraform init -backend-config=..\..\backend.hcl
 terraform plan -var-file=terraform.tfvars
@@ -56,12 +54,8 @@ terraform apply -var-file=terraform.tfvars
 
 ## CI/CD
 
-Workflow: `.github/workflows/terraform.yml` (`CI/CD Terraform`).
-
 | Evento | Ação |
 |--------|------|
 | Pull request | Test (`fmt` + `validate`) |
 | Push `develop` | Deploy homolog |
 | Push `main` | Deploy prod |
-
-Secrets: credenciais AWS, bucket/lock do state, senhas/tfvars por ambiente.
